@@ -1,0 +1,203 @@
+<!DOCTYPE html><html lang="en"><head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HDRI ➞ Cubemap ➞ MCBE Skybox</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={theme:{extend:{colors:{accent:'#6a52ab',surface:'#111'}}}}</script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="min-h-screen flex flex-col items-center gap-10 py-10 px-4 sm:px-6">
+
+  <header class="text-center space-y-3 animate-[fadeUp_.45s_ease]">
+    <h1 class="text-3xl sm:text-4xl font-extrabold text-accent">HDRI ➞ Cubemap ➞ MCBE Skybox</h1>
+    <p class="text-sm sm:text-base max-w-xl mx-auto opacity-80">Upload a 360° panorama (.hdr, .exr, .jpg, .png), tweak yaw/resolution, and export a seamless <code>.mcpack</code>.</p>
+  </header>
+<!-- Add this toggle switch above the buttons inside section -->
+<label class="flex items-center gap-2 text-xs">
+  <input type="checkbox" id="usePanoramaNames" class="accent-accent">
+  Save as panorama_0.png...
+</label>
+  <section class="w-full max-w-3xl bg-surface/70 ring-1 ring-accent/40 rounded-xl p-6 sm:p-8 backdrop-blur-md flex flex-col gap-6 animate-[fadeUp_.45s_.1s_ease_backwards]">
+    <div class="flex flex-col sm:flex-row sm:flex-wrap gap-4 items-center justify-center">
+      <input id="file" type="file" accept=".hdr,.exr,image/*" class="file:bg-accent file:text-white file:px-4 file:py-2 file:rounded-lg file:border-0 file:shadow-lg/30 text-sm" />
+      <label class="flex items-center gap-2 text-xs">
+        Yaw <span id="degOut" class="tabular-nums">0°</span>
+        <input id="yaw" type="range" min="0" max="360" value="0" class="accent-accent w-36 sm:w-44 h-1" />
+      </label>
+      <label class="flex items-center gap-2 text-xs">
+        Quality
+        <select id="quality" class="bg-surface border border-accent rounded-md px-2 py-1 text-sm outline-none">
+          <option value="2048">Ultra</option>
+          <option value="1024" selected>High</option>
+          <option value="512">Medium</option>
+          <option value="256">Low</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="flex flex-col sm:flex-row gap-4">
+      <button id="generate" class="flex-1 bg-accent text-white rounded-lg py-2 font-semibold text-lg shadow-md shadow-accent/40 transition hover:brightness-110 active:scale-95 disabled:opacity-40">Generate Faces</button>
+      <button id="download" class="flex-1 border border-accent text-accent rounded-lg py-2 font-semibold text-lg transition hover:bg-accent/10 active:scale-95 disabled:opacity-40" disabled>Download .mcpack</button>
+    </div>
+
+    <div id="log" class="bg-[#050505] rounded-lg h-32 overflow-y-auto p-3 text-[11px] font-mono leading-tight"></div>
+  </section>
+
+  <section id="preview" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-6 w-full max-w-5xl animate-[fadeUp_.45s_.2s_ease_backwards] px-2"></section>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/RGBELoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const fileEl = $('file'), yawEl = $('yaw'), degOut = $('degOut'), qSel = $('quality');
+    const genBtn = $('generate'), dlBtn = $('download'), logBox = $('log'), preview = $('preview');
+    const uuid = () => ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+    const log = (m, cls = 'text-gray-300') => { const d = document.createElement('div'); d.textContent = m; d.className = cls; logBox.appendChild(d); logBox.scrollTop = logBox.scrollHeight; };
+    let panoTex = null, packBlob = null;
+    yawEl.oninput = () => degOut.textContent = yawEl.value + '°';
+    const faceNames = ['Right', 'Left', 'Top', 'Bottom', 'Front', 'Back'];
+
+    function loadPanorama(f) {
+      return new Promise((res, rej) => {
+        const url = URL.createObjectURL(f);
+        const ext = f.name.split('.').pop().toLowerCase();
+        if (ext === 'hdr') new THREE.RGBELoader().load(url, res, undefined, rej);
+        else if (ext === 'exr') import('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/EXRLoader.js').then(m => new m.EXRLoader().load(url, res, undefined, rej));
+        else new THREE.TextureLoader().load(url, res, undefined, rej);
+      });
+    }
+
+    fileEl.onchange = async e => {
+      preview.innerHTML = ''; logBox.innerHTML = ''; packBlob = null; dlBtn.disabled = true; genBtn.disabled = true;
+      const f = e.target.files[0]; if (!f) return;
+      log('Loading panorama…', 'text-accent');
+      try {
+        panoTex = await loadPanorama(f);
+        panoTex.colorSpace = THREE.LinearSRGBColorSpace;
+        panoTex.mapping = THREE.EquirectangularReflectionMapping;
+        panoTex.wrapS = THREE.RepeatWrapping;
+        panoTex.wrapT = THREE.ClampToEdgeWrapping;
+        panoTex.needsUpdate = true;
+        log('Loaded ✔', 'text-accent');
+        genBtn.disabled = false;
+      } catch (err) {
+        log(err.message, 'text-red-500');
+      }
+    };
+
+    async function generate() {
+      if (!panoTex) return log('Choose an image first', 'text-red-500');
+      const SIZE = parseInt(qSel.value, 10);
+      genBtn.disabled = true; dlBtn.disabled = true; preview.innerHTML = '';
+      log('Generating…', 'text-accent');
+
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = SIZE;
+      const renderer = new THREE.WebGLRenderer({ canvas, preserveDrawingBuffer: true });
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.NoToneMapping;
+      renderer.setSize(SIZE, SIZE, false);
+
+      const scene = new THREE.Scene();
+      const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      const geo = new THREE.PlaneGeometry(2, 2);
+      const mat = new THREE.ShaderMaterial({
+        uniforms: {
+          pano: { value: panoTex },
+          face: { value: 0 },
+          yaw: { value: THREE.MathUtils.degToRad(+yawEl.value) }
+        },
+        vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position,1.);}`,
+        fragmentShader: `precision highp float; varying vec2 vUv;
+          uniform sampler2D pano; uniform int face; uniform float yaw;
+          const float PI = 3.14159265358979;
+          vec3 rotY(vec3 v,float a){float s=sin(a),c=cos(a);return vec3(c*v.x+s*v.z,v.y,-s*v.x+c*v.z);}
+          vec3 dir(int f, vec2 uv) {
+            uv = uv * 2.0 - 1.0;
+            if(f==0)return normalize(vec3( 1.0, uv.y, -uv.x));
+            if(f==1)return normalize(vec3(-1.0, uv.y,  uv.x));
+            if(f==2)return normalize(vec3( uv.x, 1.0, -uv.y));
+            if(f==3)return normalize(vec3( uv.x,-1.0,  uv.y));
+            if(f==4)return normalize(vec3( uv.x, uv.y, 1.0));
+            return normalize(vec3(-uv.x, uv.y,-1.0));
+          }
+          vec2 eq(vec3 d){
+            float t = atan(d.z,d.x);
+            float p = asin(clamp(d.y,-1.,1.));
+            return vec2(t/(2.0*PI)+0.5,p/PI+0.5);
+          }
+          void main() {
+            vec3 d = rotY(dir(face, vUv), yaw);
+            vec3 col = texture2D(pano, eq(d)).rgb;
+            gl_FragColor = vec4(col, 1.0);
+          }`,
+        depthWrite: false, depthTest: false
+      });
+      scene.add(new THREE.Mesh(geo, mat));
+
+      const zip = new JSZip(), folder = zip.folder('textures/environment');
+      for (let i = 0; i < 6; i++) {
+        mat.uniforms.face.value = i;
+        renderer.render(scene, cam);
+        const url = canvas.toDataURL('image/png');
+        const usePanorama = document.getElementById('usePanoramaNames').checked;
+const filename = usePanorama ? `panorama_${i}.png` : `cubemap_${i}.png`;
+zip.folder('textures/ui').file(filename, url.split(',')[1], { base64: true });
+log(`✓ ${filename}`, 'text-accent');
+
+        const div = document.createElement('div');
+        div.className = 'flex flex-col items-center gap-2';
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = faceNames[i];
+        img.className = 'w-full aspect-square object-cover rounded-xl ring-1 ring-accent/30';
+        const label = document.createElement('span');
+        label.textContent = faceNames[i];
+        label.className = 'text-xs opacity-80';
+        if (i === 5) {
+          const overlay = document.createElement('div');
+          overlay.className = 'absolute bottom-2 right-2 text-white text-sm coolvetica';
+          overlay.textContent = 'By Yami';
+          overlay.style.textShadow = '0 0 3px black';
+          const wrap = document.createElement('div');
+          wrap.className = 'relative';
+          wrap.appendChild(img);
+          wrap.appendChild(overlay);
+          div.appendChild(wrap);
+        } else {
+          div.appendChild(img);
+        }
+        div.appendChild(label);
+        preview.appendChild(div);
+        log(`✓ cubemap_${i}.png`, 'text-accent');
+        await new Promise(r => setTimeout(r, 8));
+      }
+
+      zip.file('manifest.json', JSON.stringify({
+        format_version: 2,
+        header: {
+          name: 'Custom Skybox',
+          description: 'HDRI→Cubemap',
+          uuid: uuid(),
+          version: [1, 0, 0],
+          min_engine_version: [1, 20, 0]
+        },
+        modules: [{
+          type: 'resources',
+          uuid: uuid(),
+          description: 'sky tex',
+          version: [1, 0, 0]
+        }]
+      }, null, 2));
+
+      packBlob = await zip.generateAsync({ type: 'blob' });
+      log('Done — download ready', 'text-accent');
+      dlBtn.disabled = false; genBtn.disabled = false;
+    }
+
+    genBtn.onclick = generate;
+    dlBtn.onclick = () => { if (packBlob) saveAs(packBlob, 'CustomSky.mcpack'); };
+  </script>
+</body></html>

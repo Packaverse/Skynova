@@ -1,0 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap'); @font-face { font-family: 'Coolvetica'; src: url('https://cdn.jsdelivr.net/gh/Araxeus/Fonts@main/coolvetica.ttf') format('truetype'); }
+
+:root { --accent: #6a52ab; --bg: #0a0a0a; --surface: #111111; --text: #d9d9d9; --radius: 0.75rem; }
+
+body { margin: 0; font-family: 'Inter', sans-serif; background-color: var(--bg); color: var(--text); scroll-behavior: smooth; padding: 1rem; }
+
+h1, h2, h3 { font-weight: 800; color: var(--accent); }
+
+header { text-align: center; margin-bottom: 2rem; }
+
+header p { max-width: 600px; margin: 0 auto; font-size: 0.95rem; opacity: 0.8; }
+
+button { background: var(--accent); color: white; padding: 0.75rem 1.5rem; border: none; border-radius: var(--radius); font-weight: 600; font-size: 1rem; box-shadow: 0 4px 14px rgba(106, 82, 171, 0.3); transition: all 0.2s ease-in-out; }
+
+button:hover { filter: brightness(1.1); transform: scale(1.02); }
+
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+input[type="file"] { color: white; padding: 0.5rem; background-color: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius); }
+
+select, input[type="range"] { background-color: var(--surface); border: 1px solid var(--accent); color: white; border-radius: var(--radius); padding: 0.4rem 0.6rem; outline: none; }
+
+section.controls, .preview { background-color: var(--surface); border-radius: var(--radius); padding: 1.5rem; max-width: 800px; width: 100%; margin: 0 auto 2rem; box-shadow: 0 0 0 1px var(--accent); }
+
+#preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+  justify-items: center;
+  text-align: center;
+}
+.preview-img {
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 160px;
+  object-fit: cover;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--accent);
+  position: relative;
+}
+
+.label { font-size: 0.8rem; opacity: 0.75; margin-top: 0.5rem; }
+
+.overlay-text { position: absolute; bottom: 6px; right: 8px; color: white; font-family: 'Coolvetica', sans-serif; font-size: 0.85rem; text-shadow: 0 0 5px black; }
+
