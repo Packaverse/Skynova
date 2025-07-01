@@ -1,4 +1,3 @@
-
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Upload, Download, Sun, Moon, Image, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -271,7 +270,7 @@ const Index = () => {
           </div>
           
           <h1 className="text-6xl font-bold mb-4 bg-gradient-to-r from-blue-300 via-blue-200 to-blue-400 bg-clip-text text-transparent drop-shadow-2xl">
-            HDRI to Minecraft Sky Converter
+            Skynova
           </h1>
           <p className="text-xl text-blue-100/80 dark:text-blue-200/70 max-w-2xl mx-auto font-light">
             Convert any panoramic HDRI image into a Minecraft Bedrock Edition sky cubemap texture pack in seconds.
