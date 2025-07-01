@@ -1,7 +1,9 @@
+
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Upload, Download, Sun, Moon, Image, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
 
 const Index = () => {
@@ -14,6 +16,7 @@ const Index = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [cubemapFaces, setCubemapFaces] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
+  const [isPanoramaMode, setIsPanoramaMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Apply dark mode by default on component mount
@@ -143,7 +146,8 @@ const Index = () => {
     const faceCtx = faceCanvas.getContext('2d')!;
     
     // Generate each cubemap face using equirectangular to cubemap conversion
-    const faceOrder = ['front', 'back', 'left', 'right', 'top', 'bottom'];
+    // Updated order: left, front, right, back, top, bottom
+    const faceOrder = ['left', 'front', 'right', 'back', 'top', 'bottom'];
     
     for (let faceIndex = 0; faceIndex < 6; faceIndex++) {
       faceCtx.clearRect(0, 0, faceSize, faceSize);
@@ -189,19 +193,28 @@ const Index = () => {
       const manifest = generateManifest(imageName);
       zip.file('manifest.json', JSON.stringify(manifest, null, 2));
       
-      // Add pack_icon.png (copy of front face - cubemap_0.png)
-      const frontFaceBase64 = cubemapFaces[0].split(',')[1];
-      zip.file('pack_icon.png', frontFaceBase64, { base64: true });
+      // Add pack_icon.png (copy of left face - cubemap_0.png)
+      const leftFaceBase64 = cubemapFaces[0].split(',')[1];
+      zip.file('pack_icon.png', leftFaceBase64, { base64: true });
       
-      // Create folder structure
+      // Create folder structure based on mode
       const texturesFolder = zip.folder('textures');
-      const environmentFolder = texturesFolder!.folder('environment');
-      const cubemapFolder = environmentFolder!.folder('overworld_cubemap');
+      let targetFolder;
+      let filePrefix;
+      
+      if (isPanoramaMode) {
+        targetFolder = texturesFolder!.folder('ui');
+        filePrefix = 'panorama';
+      } else {
+        const environmentFolder = texturesFolder!.folder('environment');
+        targetFolder = environmentFolder!.folder('overworld_cubemap');
+        filePrefix = 'cubemap';
+      }
 
-      // Add cubemap faces
+      // Add cubemap/panorama faces
       for (let i = 0; i < cubemapFaces.length; i++) {
         const base64Data = cubemapFaces[i].split(',')[1];
-        cubemapFolder!.file(`cubemap_${i}.png`, base64Data, { base64: true });
+        targetFolder!.file(`${filePrefix}_${i}.png`, base64Data, { base64: true });
       }
 
       // Generate and download zip
@@ -209,7 +222,7 @@ const Index = () => {
       const url = URL.createObjectURL(content);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${imageName}_sky_pack.mcpack`;
+      a.download = `${imageName}_${isPanoramaMode ? 'panorama' : 'sky'}_pack.mcpack`;
       a.click();
       URL.revokeObjectURL(url);
 
@@ -225,6 +238,13 @@ const Index = () => {
         variant: "destructive"
       });
     }
+  };
+
+  // Get display filename based on mode
+  const getDisplayFilename = (index: number) => {
+    const prefix = isPanoramaMode ? 'panorama' : 'cubemap';
+    const faceNames = ['left (-x)', 'front (-z)', 'right (+x)', 'back (+z)', 'top (+y)', 'bottom (-y)'];
+    return `${prefix}_${index}.png (${faceNames[index]})`;
   };
 
   return (
@@ -250,13 +270,35 @@ const Index = () => {
             </Button>
           </div>
           
-          <h1 className="text-6xl font-bold mb-4 bg-gradient-to-r from-blue-400 via-blue-300 to-purple-400 bg-clip-text text-transparent drop-shadow-2xl">
+          <h1 className="text-6xl font-bold mb-4 bg-gradient-to-r from-blue-300 via-blue-200 to-blue-400 bg-clip-text text-transparent drop-shadow-2xl">
             HDRI to Minecraft Sky Converter
           </h1>
           <p className="text-xl text-blue-100/80 dark:text-blue-200/70 max-w-2xl mx-auto font-light">
             Convert any panoramic HDRI image into a Minecraft Bedrock Edition sky cubemap texture pack in seconds.
           </p>
         </div>
+
+        {/* Toggle Switch for Panorama Mode */}
+        <Card className="max-w-md mx-auto mb-8 bg-white/10 dark:bg-black/20 backdrop-blur-xl border border-white/20 dark:border-blue-500/30 shadow-2xl shadow-blue-500/10">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <label htmlFor="panorama-mode" className="text-lg font-semibold text-white cursor-pointer">
+                  Save as Panorama
+                </label>
+                <p className="text-sm text-blue-200/70 font-light">
+                  {isPanoramaMode ? 'Saves to textures/ui/ as panorama_*.png' : 'Saves to textures/environment/overworld_cubemap/ as cubemap_*.png'}
+                </p>
+              </div>
+              <Switch
+                id="panorama-mode"
+                checked={isPanoramaMode}
+                onCheckedChange={setIsPanoramaMode}
+                className="data-[state=checked]:bg-blue-500"
+              />
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Upload Section - Glassmorphism Card */}
         <Card className="max-w-2xl mx-auto mb-8 bg-white/10 dark:bg-black/20 backdrop-blur-xl border border-white/20 dark:border-blue-500/30 shadow-2xl shadow-blue-500/10">
@@ -318,7 +360,9 @@ const Index = () => {
             <CardContent className="p-8">
               <div className="flex items-center mb-6">
                 <CheckCircle className="h-6 w-6 text-green-400 mr-2" />
-                <h3 className="text-2xl font-semibold text-white">Cubemap Preview</h3>
+                <h3 className="text-2xl font-semibold text-white">
+                  {isPanoramaMode ? 'Panorama Preview' : 'Cubemap Preview'}
+                </h3>
               </div>
               
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
@@ -326,11 +370,11 @@ const Index = () => {
                   <div key={index} className="relative group">
                     <img
                       src={face}
-                      alt={`Cubemap face ${index}`}
+                      alt={`${isPanoramaMode ? 'Panorama' : 'Cubemap'} face ${index}`}
                       className="w-full h-32 object-cover rounded-lg shadow-md group-hover:shadow-lg group-hover:shadow-blue-500/25 transition-all duration-300 border border-blue-500/20"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-end justify-center pb-2">
-                      <span className="text-white font-medium text-sm">cubemap_{index}.png</span>
+                      <span className="text-white font-medium text-sm text-center px-2">{getDisplayFilename(index)}</span>
                     </div>
                   </div>
                 ))}
@@ -342,7 +386,7 @@ const Index = () => {
                   className="bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-500 hover:to-emerald-400 shadow-lg shadow-green-500/25 hover:shadow-green-500/40 transition-all duration-300 font-medium px-8"
                 >
                   <Download className="h-4 w-4 mr-2" />
-                  Convert & Download Sky Pack
+                  Convert & Download {isPanoramaMode ? 'Panorama' : 'Sky'} Pack
                 </Button>
               </div>
             </CardContent>
@@ -365,6 +409,7 @@ const Index = () => {
               <ul className="list-disc list-inside space-y-2 font-light">
                 <li>Upload any panoramic HDRI image (JPG, PNG, etc.)</li>
                 <li>The tool automatically generates 6 cubemap faces</li>
+                <li>Choose between Sky (cubemap) or Panorama mode</li>
                 <li>Files are named according to Minecraft Bedrock format</li>
                 <li>Includes manifest.json and pack_icon.png for easy installation</li>
                 <li>Download as .mcpack file ready for Minecraft</li>
